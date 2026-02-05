@@ -1,0 +1,195 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Multi-tenant support
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users     User[]
+  companies Company[]
+
+  @@index([slug])
+}
+
+model User {
+  id        String    @id @default(cuid())
+  tenantId  String
+  email     String
+  password  String
+  name      String
+  role      UserRole  @default(VIEW_ONLY)
+  active    Boolean   @default(true)
+  lastLogin DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([email])
+}
+
+model Company {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  taxId       String?
+  consolidate Boolean  @default(false)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  projects     Project[]
+  expenses     Expense[]
+  bankAccounts BankAccount[]
+
+  @@index([tenantId])
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  companyId   String
+  clientName  String
+  projectName String
+  projectType ProjectType
+  budget      Decimal       @db.Decimal(12, 2)
+  currency    Currency      @default(NIS)
+  startDate   DateTime
+  endDate     DateTime?
+  status      ProjectStatus @default(ACTIVE)
+  notes       String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  company      Company       @relation(fields: [companyId], references: [id])
+  revenueLines RevenueLine[]
+  invoices     Invoice[]
+
+  @@index([companyId])
+  @@index([status])
+}
+
+model RevenueLine {
+  id            String   @id @default(cuid())
+  projectId     String
+  month         DateTime
+  recognizedAmt Decimal  @db.Decimal(12, 2)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, month])
+  @@index([projectId])
+}
+
+model Invoice {
+  id            String        @id @default(cuid())
+  projectId     String
+  invoiceNumber String?
+  amount        Decimal       @db.Decimal(12, 2)
+  vatAmount     Decimal       @db.Decimal(12, 2)
+  totalAmount   Decimal       @db.Decimal(12, 2)
+  invoiceDate   DateTime
+  dueDate       DateTime
+  paymentDate   DateTime?
+  paymentStatus PaymentStatus @default(NOT_INVOICED)
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@index([projectId])
+  @@index([paymentStatus])
+}
+
+model Expense {
+  id          String          @id @default(cuid())
+  companyId   String
+  category    ExpenseCategory
+  subcategory String?
+  amount      Decimal         @db.Decimal(12, 2)
+  currency    Currency        @default(NIS)
+  date        DateTime
+  description String?
+  paid        Boolean         @default(false)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId])
+  @@index([category])
+}
+
+model BankAccount {
+  id             String   @id @default(cuid())
+  companyId      String
+  bankName       String
+  accountNumber  String
+  currency       Currency @default(NIS)
+  currentBalance Decimal  @db.Decimal(12, 2)
+  active         Boolean  @default(true)
+  lastUpdated    DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId])
+}
+
+// Enums
+enum UserRole {
+  ADMIN
+  PM
+  FINANCE
+  VIEW_ONLY
+}
+
+enum ProjectType {
+  FIXED_PRICE
+  TIME_AND_MATERIALS
+  RETAINER
+}
+
+enum Currency {
+  NIS
+  USD
+}
+
+enum ProjectStatus {
+  ACTIVE
+  COMPLETED
+  ON_HOLD
+  CANCELLED
+}
+
+enum PaymentStatus {
+  NOT_INVOICED
+  INVOICED
+  PAID
+}
+
+enum ExpenseCategory {
+  SALARIES
+  RENT
+  SOFTWARE
+  CONTRACTORS
+  MARKETING
+  OTHER
+}
